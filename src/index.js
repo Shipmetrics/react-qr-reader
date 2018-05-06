@@ -9,7 +9,7 @@ require('webrtc-adapter')
 
 // Inline worker.js as a string value of workerBlob.
 let workerBlob
-if(typeof Blob === 'function') {
+if (typeof Blob === 'function') {
   // eslint-disable-next-line
   workerBlob = new Blob([__inline('../lib/worker.js')], {
     type: 'application/javascript',
@@ -30,17 +30,18 @@ module.exports = class Reader extends Component {
     legacyMode: PropTypes.bool,
     resolution: PropTypes.number,
     showViewFinder: PropTypes.bool,
+    constraints: PropTypes.any,
     style: PropTypes.any,
     className: PropTypes.string,
-  };
+  }
   static defaultProps = {
     delay: 500,
     resolution: 600,
     facingMode: 'environment',
     showViewFinder: true,
-  };
+  }
 
-  els = {};
+  els = {}
 
   constructor(props) {
     super(props)
@@ -102,7 +103,7 @@ module.exports = class Reader extends Component {
     }
   }
   shouldComponentUpdate(nextProps, nextState) {
-    if(nextState !== this.state){
+    if (nextState !== this.state) {
       return true
     }
 
@@ -135,29 +136,42 @@ module.exports = class Reader extends Component {
     }
   }
   initiate(props = this.props) {
-    const { onError, facingMode } = props
+    const { onError, facingMode, chooseDeviceId } = props
 
-    // Check browser facingMode constraint support
-    // Firefox ignores facingMode or deviceId constraints
-    const isFirefox = /firefox/i.test(navigator.userAgent)
-    const supported = navigator.mediaDevices !== undefined
-      ? navigator.mediaDevices.getSupportedConstraints()
-      : {}
-    const constraints = {}
+    //override with prop version of chooseDeviceId
+    let vConstraintsPromise
+    if (chooseDeviceId) {
+      vConstraintsPromise = getDeviceId(facingMode, chooseDeviceId).then(
+        deviceId => ({ deviceId })
+      )
+    } else {
+      // Check browser facingMode constraint support
+      // Firefox ignores facingMode or deviceId constraints
+      const isFirefox = /firefox/i.test(navigator.userAgent)
+      const supported =
+        navigator.mediaDevices !== undefined &&
+        navigator.mediaDevices.hasOwnProperty('getSupportedConstraints')
+          ? navigator.mediaDevices.getSupportedConstraints()
+          : {}
+      const constraints = {}
 
-    if(supported.facingMode) {
-      constraints.facingMode = { ideal: facingMode }
-    }
-    if(supported.aspectRatio) {
-      constraints.aspectRatio = 1
-    }
-    if(supported.frameRate) {
-      constraints.frameRate = {ideal: 25, min: 10}
-    }
-    const vConstraintsPromise = (supported.facingMode || isFirefox)
-      ? Promise.resolve(constraints)
-      : getDeviceId(facingMode).then(deviceId => ({ deviceId }))
+      if (!props.constraints) {
+        if (supported.facingMode) {
+          constraints.facingMode = { ideal: facingMode }
+        }
+        if (supported.aspectRatio) {
+          constraints.aspectRatio = 1
+        }
+        if (supported.frameRate) {
+          constraints.frameRate = { ideal: 25, min: 10 }
+        }
+      }
 
+      vConstraintsPromise =
+        supported.facingMode || isFirefox || props.constraints.facingMode
+          ? Promise.resolve(props.constraints || constraints)
+          : getDeviceId(facingMode).then(deviceId => ({ deviceId }))
+    }
     vConstraintsPromise
       .then(video => navigator.mediaDevices.getUserMedia({ video }))
       .then(this.handleVideo)
@@ -167,7 +181,7 @@ module.exports = class Reader extends Component {
     const { preview } = this.els
 
     // Handle different browser implementations of MediaStreams as src
-    if(preview.srcObject !== undefined){
+    if (preview.srcObject !== undefined) {
       preview.srcObject = stream
     } else if (preview.mozSrcObject !== undefined) {
       preview.mozSrcObject = stream
@@ -197,7 +211,7 @@ module.exports = class Reader extends Component {
     const preview = this.els.preview
     preview.play()
 
-    if(typeof onLoad == 'function') {
+    if (typeof onLoad == 'function') {
       onLoad()
     }
 
@@ -214,14 +228,16 @@ module.exports = class Reader extends Component {
 
     // Get image/video dimensions
     let width = Math.floor(legacyMode ? img.naturalWidth : preview.videoWidth)
-    let height = Math.floor(legacyMode ? img.naturalHeight : preview.videoHeight)
+    let height = Math.floor(
+      legacyMode ? img.naturalHeight : preview.videoHeight
+    )
 
     // Canvas draw offsets
     let hozOffset = 0
     let vertOffset = 0
 
     // Scale image to correct resolution
-    if(legacyMode){
+    if (legacyMode) {
       // Keep image aspect ratio
       const greatestSize = width > height ? width : height
       const ratio = resolution / greatestSize
@@ -231,7 +247,7 @@ module.exports = class Reader extends Component {
 
       canvas.width = width
       canvas.height = height
-    }else{
+    } else {
       // Crop image to fit 1:1 aspect ratio
       const smallestSize = width < height ? width : height
       const ratio = resolution / smallestSize
@@ -246,14 +262,19 @@ module.exports = class Reader extends Component {
       canvas.height = resolution
     }
 
-
-    const previewIsPlaying = preview &&
-      preview.readyState === preview.HAVE_ENOUGH_DATA
+    const previewIsPlaying =
+      preview && preview.readyState === preview.HAVE_ENOUGH_DATA
 
     if (legacyMode || previewIsPlaying) {
       const ctx = canvas.getContext('2d')
 
-      ctx.drawImage(legacyMode ? img : preview, hozOffset, vertOffset, width, height)
+      ctx.drawImage(
+        legacyMode ? img : preview,
+        hozOffset,
+        vertOffset,
+        width,
+        height
+      )
 
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
       // Send data to web-worker
@@ -280,7 +301,7 @@ module.exports = class Reader extends Component {
     // Reset componentDidUpdate
     this.componentDidUpdate = undefined
 
-    if(typeof this.props.onLoad == 'function') {
+    if (typeof this.props.onLoad == 'function') {
       this.props.onLoad()
     }
   }
@@ -308,7 +329,7 @@ module.exports = class Reader extends Component {
       onImageLoad,
       legacyMode,
       showViewFinder,
-      facingMode
+      facingMode,
     } = this.props
 
     const containerStyle = {
@@ -351,27 +372,30 @@ module.exports = class Reader extends Component {
     return (
       <section className={className} style={style}>
         <section style={containerStyle}>
-          {
-            (!legacyMode && showViewFinder)
-            ? <div style={viewFinderStyle} />
-            : null
-          }
-          {
-            legacyMode
-              ? <input
-                style={hiddenStyle}
-                type="file"
-                accept="image/*"
-                ref={this.setRefFactory('input')}
-                onChange={this.handleInputChange}
-              />
-              : null
-          }
-          {
-            legacyMode
-              ? <img style={imgPreviewStyle} ref={this.setRefFactory('img')} onLoad={onImageLoad} />
-              : <video style={videoPreviewStyle} ref={this.setRefFactory('preview')} />
-          }
+          {!legacyMode && showViewFinder ? (
+            <div style={viewFinderStyle} />
+          ) : null}
+          {legacyMode ? (
+            <input
+              style={hiddenStyle}
+              type="file"
+              accept="image/*"
+              ref={this.setRefFactory('input')}
+              onChange={this.handleInputChange}
+            />
+          ) : null}
+          {legacyMode ? (
+            <img
+              style={imgPreviewStyle}
+              ref={this.setRefFactory('img')}
+              onLoad={onImageLoad}
+            />
+          ) : (
+            <video
+              style={videoPreviewStyle}
+              ref={this.setRefFactory('preview')}
+            />
+          )}
 
           <canvas style={hiddenStyle} ref={this.setRefFactory('canvas')} />
         </section>
